@@ -1,0 +1,64 @@
+
+
+things to do on:
+    
+    new game:
+        set state 0
+
+    new hand:
+        flip bb
+        set action flags
+        push actions onto history
+        clear actions
+        clear action flags
+        clear board
+        clear bets
+        clear pot
+        clear hole cards
+        shuffle deck
+        set street count to 0
+        post blinds
+            check for busting; set game_over false if so
+        deal hole cards
+        set hand_over false
+        set raise_count to 0
+        push events
+
+    new street:
+        set action on big blind
+        add bets to the pot
+        deal another card
+        increment street counter
+        clear action flags
+        set raise count to 0
+
+    showdown:
+        figure out who won
+        set hand over
+        move pot to winner stack
+        push events
+
+    new action:
+        set stacks right
+
+
+
+p0=hero=big blind
+
+post 50
+villian calls
+option: raise
+
+
+NEW GAME STATE 
+p0 <- big blind
+p1 <- small blind
+p1 <- action
+
+p1 calls
+p0: [check, raise]
+
+p0 checks
+deal new hand
+
+
