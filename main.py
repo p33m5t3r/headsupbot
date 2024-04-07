@@ -46,10 +46,10 @@ class Action:
         return self.action_type in Action.player_actions
 
     def __str__(self):
-        return f"{self.action_type} {self.args}"
+        return f"{self.action_type.value} {self.args}"
 
     def __repr__(self):
-        return f"{self.action_type} {self.args}"
+        return f"{self.action_type.value} {self.args}"
 
 # an ordered list of preferences over actions
 class Preference:
@@ -76,6 +76,7 @@ class Strategy:
 UpdateRule = Union[Preference, Strategy, Action]
 
 # picks the best valid action according to the update rule
+# TODO: fix this
 def match(u: UpdateRule, acts: list[Action]) -> float:
     if isinstance(u, Preference):
         for a in u.preferences:
@@ -84,8 +85,8 @@ def match(u: UpdateRule, acts: list[Action]) -> float:
         return None
 
     elif isinstance(u, Strategy):
-        actions = u.strategy.keys()
-        probs = u.strategy.values()
+        actions = list(u.strategy.keys())
+        probs = list(u.strategy.values())
         choice = np.random.choice(actions, probs)
         if choice not in acts:
             raise ValueError("Invalid action.")
@@ -112,6 +113,15 @@ def raise_n(amount):
 
 def shove_n(amount):
     return Action(ActionType.Shove, amount)
+
+def deal_hole(cards, role):
+    return Action(ActionType.DealHand, cards, role)
+
+def post_bb(amount, role):
+    return Action(ActionType.PostBB, amount, role)
+
+def post_sb(amount, role):
+    return Action(ActionType.PostSB, amount, role)
 
 
 """ RULES
@@ -237,7 +247,8 @@ class LimitHoldemState:
     def new_hand(self):
         # flip who is big blind, who acts first
         self.bb_flag.reverse()
-        self.action_flag = self.bb_flag
+        self.action_flag[0] = self.bb_flag[0]
+        self.action_flag[1] = self.bb_flag[1]
         self.action_flag.reverse()
 
         # reset the hand history
@@ -278,6 +289,10 @@ class LimitHoldemState:
         self.hands[sb] = sb_hand
 
         # TODO: push onto action history
+        self.actions.append(deal_hole(bb_hand, bb))
+        self.actions.append(deal_hole(sb_hand, sb))
+        self.actions.append(post_bb(self.bb_amt, bb))
+        self.actions.append(post_sb(self.sb_amt, sb))
  
     def declare_winner(self, winner):
         self.stacks[winner] += self.pot_amount  # winner takes the pot
@@ -328,6 +343,8 @@ class LimitHoldemState:
         t_action = action.action_type
 
         self.acted[role] = 1
+        self.actions.append((role, action))
+        self.action_flag.reverse()
         
         if t_action == FOLD:
             return self.declare_winner(not role)
@@ -360,23 +377,34 @@ class LimitHoldemState:
     def __str__(self):
         fmt = lambda cs: ','.join([Card.int_to_pretty_str(c) for c in cs])
         s_handcount = f"Hands Played: {len(self.history)}"
-        s_p0s = f"p0: {self.names[0]}: {self.stacks[0]}bb"
-        s_p1s = f"p1: {self.names[1]}: {self.stacks[1]}bb"
-        s_p0h = fmt(self.hands[0])
-        s_p1h = fmt(self.hands[1])
+        s_turn = f"Action on {self.names[self.acting_player()]}"
+        p0_bb = "(BB) " if self.bb_flag[0] else ""
+        p1_bb = "(BB) " if self.bb_flag[1] else ""
+        p0_name = self.names[0] 
+        p1_name = self.names[1] 
+        p0_stack = f"{self.stacks[0]}bb"
+        p1_stack = f"{self.stacks[1]}bb"
+        p0_bet = f" bet: {self.bets[0]}bb"
+        p1_bet = f" bet: {self.bets[1]}bb"
+        
+        p0_str = p0_bb + p0_name + ": " + p0_stack + "\t\t" + fmt(self.hands[0])
+        p1_str = p1_bb + p1_name + ": " + p1_stack + "\t\t" + fmt(self.hands[1])
+
         s_board = fmt(self.board)
         s_pot = f"Pot: {self.pot_amount}bb"
-        s_p0b = f"p0 bet: {self.bets[0]}bb"
-        s_p1b = f"p1 bet: {self.bets[1]}bb"
+
+        s_history = "Hand History: " + '\n'.join([str(a) for a in self.actions])
     
-        info = [s_handcount, s_p0s, s_p1s, s_p0h, 
-                s_p1h, s_board, s_pot, s_p0b, s_p1b]
+        info = [s_handcount, s_turn, p0_str, p1_str, s_board, s_pot, 
+                p0_name + p0_bet, p1_name + p1_bet + '\n' + s_history]
         return '\n'.join(info)
 
 class LimitHoldemGame:
-    def __init__(self, p0_strategy, p1_strategy):
-        self.state = LimitHoldemState()
-        self.strategies = [p0_strategy, p1_strategy]
+    def __init__(self, p0: (str, callable), p1: (str, callable)):
+        # pN = (name, strategy)
+        self.names = [p0[0], p1[0]]
+        self.strategies = [p0[1], p1[1]]
+        self.state = LimitHoldemState(*self.names)
 
     def play_hand(self):
         state = self.state
@@ -452,11 +480,18 @@ def cli_player(state, role):
     return mapping[choice]
     
 
-def play_against_cli(bot, gametype=LimitHoldemGame, n_hands=100):
-    game = gametype(cli_player, bot)
+# can abstract out the game type in future
+def play_against_cli(bot, n_hands=100):
+    player = ("Hero", cli_player)
+    game = LimitHoldemGame(player, bot)
     game.play_n_hands(n_hands)
 
 if __name__ == "__main__":
-    bots = []
+    bots = [
+        ("RandomBot", s_random), 
+        ("AcesOnlyBot", s_only_play_aces)
+    ]
+
     # analyze(bots)
-    play_against_cli(s_only_play_aces)
+    play_against_cli(bots[0])    # play against random bot
+
